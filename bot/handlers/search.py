@@ -155,12 +155,14 @@ async def show_movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE,
         )
         return
 
-    # Check if in favorites
+    # Check if in favorites and watched
     is_favorite = False
+    is_watched = False
     with get_session() as session:
         db_user = crud.get_user_by_telegram_id(session, user.id)
         if db_user:
             is_favorite = crud.is_in_favorites(session, db_user.id, tmdb_id)
+            is_watched = crud.is_watched(session, db_user.id, tmdb_id)
 
     # Format movie card
     text = format_movie_card(movie)
@@ -177,7 +179,7 @@ async def show_movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE,
         text += f"\n💬 _{tagline}_"
 
     # Get keyboard
-    keyboard = get_movie_details_keyboard(tmdb_id, is_favorite)
+    keyboard = get_movie_details_keyboard(tmdb_id, is_favorite, is_watched)
 
     # Try to send with poster
     poster_url = movie.get('poster_url')

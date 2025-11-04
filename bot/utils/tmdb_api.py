@@ -67,10 +67,17 @@ def format_movie_data(movie: Any, media_type: str = 'movie') -> Dict[str, Any]:
         # Helper function to safely get attribute
         def safe_get(obj, attr, default=''):
             try:
-                value = getattr(obj, attr, default)
+                # Try as dict first
+                if isinstance(obj, dict):
+                    value = obj.get(attr, default)
+                else:
+                    # Try as object attribute
+                    value = getattr(obj, attr, default)
+
                 # If it's a method, return default
                 if callable(value):
                     return default
+
                 return value if value is not None else default
             except:
                 return default
@@ -85,17 +92,17 @@ def format_movie_data(movie: Any, media_type: str = 'movie') -> Dict[str, Any]:
             original_title = safe_get(movie, 'original_title', title)
             release_date = safe_get(movie, 'release_date', '')
 
+        # Ensure title is not empty
+        if not title or title == 'Unknown':
+            title = safe_get(movie, 'original_title', 'Unknown Movie')
+
         # Extract year from release date
         year = ''
-        if release_date and isinstance(release_date, str):
+        if release_date and isinstance(release_date, str) and len(release_date) >= 4:
             try:
-                year = datetime.strptime(release_date, '%Y-%m-%d').year
+                year = int(release_date[:4])
             except:
-                # Try to extract just year if format is different
-                try:
-                    year = int(release_date[:4]) if len(release_date) >= 4 else ''
-                except:
-                    year = ''
+                year = ''
 
         # Get genre IDs
         genre_ids = safe_get(movie, 'genre_ids', [])
@@ -113,37 +120,42 @@ def format_movie_data(movie: Any, media_type: str = 'movie') -> Dict[str, Any]:
 
         # Get vote average and count
         vote_average = safe_get(movie, 'vote_average', 0)
-        if isinstance(vote_average, (int, float)):
-            vote_average = round(float(vote_average), 1)
-        else:
+        try:
+            vote_average = round(float(vote_average), 1) if vote_average else 0.0
+        except:
             vote_average = 0.0
 
         vote_count = safe_get(movie, 'vote_count', 0)
-        if not isinstance(vote_count, int):
-            try:
-                vote_count = int(vote_count)
-            except:
-                vote_count = 0
+        try:
+            vote_count = int(vote_count) if vote_count else 0
+        except:
+            vote_count = 0
 
         # Get popularity
         popularity = safe_get(movie, 'popularity', 0)
-        if not isinstance(popularity, (int, float)):
-            try:
-                popularity = float(popularity)
-            except:
-                popularity = 0
+        try:
+            popularity = float(popularity) if popularity else 0
+        except:
+            popularity = 0
+
+        # Get TMDb ID
+        tmdb_id = safe_get(movie, 'id', 0)
+        try:
+            tmdb_id = int(tmdb_id) if tmdb_id else 0
+        except:
+            tmdb_id = 0
 
         return {
-            'tmdb_id': safe_get(movie, 'id', 0),
+            'tmdb_id': tmdb_id,
             'media_type': media_type,
-            'title': title,
-            'original_title': original_title,
-            'overview': safe_get(movie, 'overview', ''),
+            'title': str(title),
+            'original_title': str(original_title),
+            'overview': str(safe_get(movie, 'overview', '')),
             'poster_path': poster_path,
             'backdrop_path': backdrop_path,
             'poster_url': get_poster_url(poster_path),
             'backdrop_url': get_backdrop_url(backdrop_path),
-            'release_date': release_date,
+            'release_date': str(release_date),
             'year': year,
             'vote_average': vote_average,
             'vote_count': vote_count,
@@ -155,6 +167,7 @@ def format_movie_data(movie: Any, media_type: str = 'movie') -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error formatting movie data: {e}")
+        logger.error(f"Movie object: {movie}")
         return {}
 
 # GENRE OPERATIONS

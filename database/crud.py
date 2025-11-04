@@ -235,9 +235,10 @@ def get_user_stats(session: Session, user_id: int) -> dict:
             Favorite.user_id == user_id
         ).count()
 
-        watched_count = session.query(WatchHistory).filter(
+        # Count UNIQUE watched movies (no duplicates)
+        watched_count = session.query(WatchHistory.tmdb_id).filter(
             WatchHistory.user_id == user_id
-        ).count()
+        ).distinct().count()
 
         searches_count = session.query(SearchHistory).filter(
             SearchHistory.user_id == user_id
@@ -252,4 +253,97 @@ def get_user_stats(session: Session, user_id: int) -> dict:
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         return {'favorites': 0, 'watched': 0, 'searches': 0}
+
+# WATCH HISTORY OPERATIONS
+
+def add_to_watch_history(
+        session: Session,
+        user_id: int,
+        tmdb_id: int,
+        media_type: str,
+        title: str,
+        **kwargs
+) -> Optional[WatchHistory]:
+    """Add movie to watch history"""
+    try:
+        # Check if already watched (prevent duplicates)
+        existing = session.query(WatchHistory).filter(
+            WatchHistory.user_id == user_id,
+            WatchHistory.tmdb_id == tmdb_id
+        ).first()
+
+        if existing:
+            logger.info(f"Movie {tmdb_id} already in watch history for user {user_id}")
+            return existing
+
+        watch = WatchHistory(
+            user_id=user_id,
+            tmdb_id=tmdb_id,
+            media_type=media_type,
+            title=title,
+            poster_path=kwargs.get('poster_path'),
+            release_date=kwargs.get('release_date'),
+            genres=kwargs.get('genres', []),
+            watched_at=datetime.utcnow()
+        )
+
+        session.add(watch)
+        session.commit()
+        session.refresh(watch)
+
+        logger.info(f"✅ Added to watch history: {title}")
+        return watch
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding to watch history: {e}")
+        return None
+
+
+def remove_from_watch_history(session: Session, user_id: int, tmdb_id: int) -> bool:
+    """Remove from watch history"""
+    try:
+        watch = session.query(WatchHistory).filter(
+            WatchHistory.user_id == user_id,
+            WatchHistory.tmdb_id == tmdb_id
+        ).first()
+
+        if watch:
+            session.delete(watch)
+            session.commit()
+            logger.info(f"✅ Removed from watch history: {tmdb_id}")
+            return True
+
+        return False
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error removing from watch history: {e}")
+        return False
+
+
+def is_watched(session: Session, user_id: int, tmdb_id: int) -> bool:
+    """Check if movie is in watch history"""
+    try:
+        exists = session.query(WatchHistory).filter(
+            WatchHistory.user_id == user_id,
+            WatchHistory.tmdb_id == tmdb_id
+        ).first() is not None
+        return exists
+    except Exception as e:
+        logger.error(f"Error checking watch history: {e}")
+        return False
+
+
+def get_user_watch_history(session: Session, user_id: int, limit: int = 50) -> List[WatchHistory]:
+    """Get user's watch history"""
+    try:
+        return session.query(WatchHistory).filter(
+            WatchHistory.user_id == user_id
+        ).order_by(desc(WatchHistory.watched_at)).limit(limit).all()
+    except Exception as e:
+        logger.error(f"Error getting watch history: {e}")
+        return []
+
+
 

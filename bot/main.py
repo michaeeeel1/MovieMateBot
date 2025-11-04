@@ -18,7 +18,9 @@ from telegram.ext import (
 from database.connection import get_session
 from config import settings
 from database import crud
-from bot.handlers import start, search
+from bot.handlers import (start, search, popular,
+                        trending, favorites, recommendations
+                          )
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     logger.info(f"Callback: {callback_data} from user {query.from_user.id}")
 
+    # Get Started
     if callback_data == "get_started":
         await query.edit_message_text(
             "🎬 Great! Let's get started!\n\n"
@@ -52,6 +55,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             "Try searching for your favorite movie! 🍿"
         )
 
+    # About
     elif callback_data == "about":
         about_text = (
             "ℹ️ **About MovieMate**\n\n"
@@ -64,7 +68,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             "• Discover trending content\n\n"
             "**Data Source:** TMDb (themoviedb.org)\n"
             "**Version:** 1.0 Beta\n"
-            "**Developer:** @michaeeeel1\n\n"
+            "**Developer:** @megaknight24\n\n"
             "Made with ❤️ and Python 🐍"
         )
         await query.edit_message_text(
@@ -72,29 +76,70 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode='Markdown'
         )
 
+    # Movie Details
     elif callback_data.startswith("movie_"):
-        # Show movie details
         tmdb_id = int(callback_data.replace("movie_", ""))
         await search.show_movie_details(update, context, tmdb_id)
 
+    # Add to Favorites
     elif callback_data.startswith("fav_"):
-        # Add to favorites
         tmdb_id = int(callback_data.replace("fav_", ""))
         await handle_add_favorite(update, context, tmdb_id)
 
+    # Remove from Favorites
     elif callback_data.startswith("unfav_"):
-        # Remove from favorites
         tmdb_id = int(callback_data.replace("unfav_", ""))
         await handle_remove_favorite(update, context, tmdb_id)
 
-    elif callback_data == "main_menu":
-        await query.edit_message_text(
-            "🏠 **Main Menu**\n\n"
-            "Use the buttons below to navigate! 👇"
-        )
+    # Mark as Watched
+    elif callback_data.startswith("watched_"):
+        tmdb_id = int(callback_data.replace("watched_", ""))
+        await handle_mark_watched(update, context, tmdb_id)
 
+    # Remove from Watched (NEW!)
+    elif callback_data.startswith("unwatched_"):
+        tmdb_id = int(callback_data.replace("unwatched_", ""))
+        await handle_unwatched(update, context, tmdb_id)
+
+    # Similar Movies
+    elif callback_data.startswith("similar_"):
+        tmdb_id = int(callback_data.replace("similar_", ""))
+        await recommendations.show_similar(update, context, tmdb_id)
+
+    # Watch Trailer
+    elif callback_data.startswith("trailer_"):
+        tmdb_id = int(callback_data.replace("trailer_", ""))
+        await handle_trailer(update, context, tmdb_id)
+
+    # Trending Options
+    elif callback_data == "trending_day":
+        await trending.show_trending(update, context, 'day')
+
+    elif callback_data == "trending_week":
+        await trending.show_trending(update, context, 'week')
+
+    # Main Menu
+    elif callback_data == "main_menu":
+        from bot.keyboards.main_menu import get_main_menu_keyboard
+
+        try:
+            # Try to edit message
+            await query.edit_message_text(
+                "🏠 **Main Menu**\n\n"
+                "Use the buttons below to navigate! 👇",
+                parse_mode='Markdown'
+            )
+        except:
+            # If can't edit (e.g., message with photo), send new message
+            await query.message.reply_text(
+                "🏠 **Main Menu**\n\n"
+                "Use the buttons below to navigate! 👇",
+                parse_mode='Markdown',
+                reply_markup=get_main_menu_keyboard()
+            )
+
+    # Back to Search
     elif callback_data == "back_search":
-        # Show last search results
         if 'last_search_results' in context.user_data:
             from bot.utils.formatters import format_search_results_header
             from bot.keyboards.movie_keyboards import get_search_results_keyboard
@@ -105,16 +150,29 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             header = format_search_results_header(query_text, len(results))
             keyboard = get_search_results_keyboard(results)
 
-            await query.edit_message_text(
-                header,
-                parse_mode='Markdown',
-                reply_markup=keyboard
-            )
+            try:
+                await query.edit_message_text(
+                    header,
+                    parse_mode='Markdown',
+                    reply_markup=keyboard
+                )
+            except:
+                await query.message.reply_text(
+                    header,
+                    parse_mode='Markdown',
+                    reply_markup=keyboard
+                )
         else:
             await query.edit_message_text(
                 "🔍 No recent search.\n\n"
-                "Use 🔍 Search Movies to find movies!"
+                "Use 🔍 Search Movies to find movies!",
+                parse_mode='Markdown'
             )
+
+    # Unknown callback
+    else:
+        logger.warning(f"Unknown callback: {callback_data}")
+        await query.answer("⚠️ Unknown action", show_alert=True)
 
 # MESSAGE HANDLER
 
@@ -128,36 +186,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await search.start_search(update, context)
 
     elif text == "🔥 Trending":
-        await update.message.reply_text(
-            "🔥 **Trending Movies**\n\n"
-            "This feature is coming soon! 🚧\n\n"
-            "You'll see what's trending right now.\n"
-            "Stay tuned! 🎬"
-        )
+        await trending.show_trending_options(update, context)
 
     elif text == "⭐ Popular":
-        await update.message.reply_text(
-            "⭐ **Popular Movies**\n\n"
-            "This feature is coming soon! 🚧\n\n"
-            "You'll see the most popular movies.\n"
-            "Stay tuned! 🎬"
-        )
+        await popular.show_popular(update, context)
 
     elif text == "🎯 Recommendations":
-        await update.message.reply_text(
-            "🎯 **Personalized Recommendations**\n\n"
-            "This feature is coming soon! 🚧\n\n"
-            "You'll get recommendations based on your favorites.\n"
-            "Stay tuned! 🎬"
-        )
+        await recommendations.show_recommendations(update, context)
 
     elif text == "❤️ My Favorites":
-        await update.message.reply_text(
-            "❤️ **My Favorites**\n\n"
-            "This feature is coming soon! 🚧\n\n"
-            "You'll see all your favorite movies here.\n"
-            "Stay tuned! 🎬"
-        )
+        await favorites.show_favorites(update, context)
 
     elif text == "📊 My Stats":
         from database.connection import get_session
@@ -197,6 +235,121 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"🤔 I don't understand '{text}' yet.\n\n"
             f"Please use the menu buttons below! 👇"
         )
+
+# MARK AS WATCHED HANDLER
+
+async def handle_mark_watched(update: Update, context: ContextTypes.DEFAULT_TYPE, tmdb_id: int) -> None:
+    """Mark movie as watched or remove from watched"""
+    query = update.callback_query
+
+    user = update.effective_user
+
+    # Check if already watched
+    is_already_watched = False
+    with get_session() as session:
+        db_user = crud.get_user_by_telegram_id(session, user.id)
+        if db_user:
+            is_already_watched = crud.is_watched(session, db_user.id, tmdb_id)
+
+    if is_already_watched:
+        # Already watched - offer to remove
+        await query.answer("⚠️ Already marked as watched!", show_alert=True)
+        return
+
+    # Not watched yet - mark as watched
+    await query.answer("✅ Marking as watched...")
+
+    # Get movie details
+    from bot.utils.tmdb_api import get_movie_details
+    movie = get_movie_details(tmdb_id)
+
+    if not movie:
+        await query.answer("❌ Error loading movie", show_alert=True)
+        return
+
+    # Add to watch history in database
+    with get_session() as session:
+        db_user = crud.get_user_by_telegram_id(session, user.id)
+        if db_user:
+            result = crud.add_to_watch_history(
+                session=session,
+                user_id=db_user.id,
+                tmdb_id=tmdb_id,
+                media_type='movie',
+                title=movie['title'],
+                poster_path=movie.get('poster_path'),
+                release_date=movie.get('release_date'),
+                genres=movie.get('genres', [])
+            )
+
+            if result:
+                await query.answer("✅ Marked as watched! 🎬", show_alert=True)
+                logger.info(f"User {user.id} marked movie {tmdb_id} as watched")
+
+                # Update keyboard to show "Remove from Watched" button
+                from bot.keyboards.movie_keyboards import get_movie_details_keyboard
+
+                # Check if in favorites
+                is_favorite = crud.is_in_favorites(session, db_user.id, tmdb_id)
+                keyboard = get_movie_details_keyboard(tmdb_id, is_favorite=is_favorite, is_watched=True)
+
+                try:
+                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                except:
+                    pass
+            else:
+                await query.answer("⚠️ Already in watch history!", show_alert=True)
+
+
+async def handle_unwatched(update: Update, context: ContextTypes.DEFAULT_TYPE, tmdb_id: int) -> None:
+    """Remove movie from watched"""
+    query = update.callback_query
+    await query.answer("🗑️ Removing from watched...")
+
+    user = update.effective_user
+
+    # Remove from database
+    with get_session() as session:
+        db_user = crud.get_user_by_telegram_id(session, user.id)
+        if db_user:
+            result = crud.remove_from_watch_history(session, db_user.id, tmdb_id)
+
+            if result:
+                await query.answer("🗑️ Removed from watched", show_alert=True)
+
+                # Update keyboard
+                from bot.keyboards.movie_keyboards import get_movie_details_keyboard
+
+                # Check if in favorites
+                is_favorite = crud.is_in_favorites(session, db_user.id, tmdb_id)
+                keyboard = get_movie_details_keyboard(tmdb_id, is_favorite=is_favorite, is_watched=False)
+
+                try:
+                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                except:
+                    pass
+            else:
+                await query.answer("❌ Error removing", show_alert=True)
+
+# TRAILER HANDLER
+
+async def handle_trailer(update: Update, context: ContextTypes.DEFAULT_TYPE, tmdb_id: int) -> None:
+    """Show trailer link"""
+    query = update.callback_query
+
+    from bot.utils.tmdb_api import get_movie_trailer_url
+
+    trailer_url = get_movie_trailer_url(tmdb_id)
+
+    if trailer_url:
+        await query.answer()
+        await query.message.reply_text(
+            f"🎥 **Watch Trailer**\n\n"
+            f"[Click here to watch on YouTube]({trailer_url})",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.answer("❌ Trailer not available", show_alert=True)
 
 # FAVORITES HANDLERS
 

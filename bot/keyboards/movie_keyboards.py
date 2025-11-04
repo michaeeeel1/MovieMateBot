@@ -56,6 +56,7 @@ def get_search_results_keyboard(movies: List[Dict[str, Any]]) -> InlineKeyboardM
 def get_movie_details_keyboard(
         tmdb_id: int,
         is_favorite: bool = False,
+        is_watched: bool = False,
         show_trailer: bool = True
 ) -> InlineKeyboardMarkup:
     """
@@ -64,6 +65,7 @@ def get_movie_details_keyboard(
     Args:
         tmdb_id: TMDb movie ID
         is_favorite: Whether movie is in user's favorites
+        is_watched: Whether movie is in user's watch history
         show_trailer: Whether to show trailer button
 
     Returns:
@@ -71,7 +73,7 @@ def get_movie_details_keyboard(
     """
     keyboard = []
 
-    # Row 1: Favorite and Watched
+    # Row 1: Favorite
     row1 = []
 
     if is_favorite:
@@ -85,10 +87,15 @@ def get_movie_details_keyboard(
 
     keyboard.append(row1)
 
-    # Row 2: Mark as Watched
-    keyboard.append([
-        InlineKeyboardButton("✅ Mark as Watched", callback_data=f"watched_{tmdb_id}")
-    ])
+    # Row 2: Mark as Watched / Remove from Watched
+    if is_watched:
+        keyboard.append([
+            InlineKeyboardButton("🗑️ Remove from Watched", callback_data=f"unwatched_{tmdb_id}")
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton("✅ Mark as Watched", callback_data=f"watched_{tmdb_id}")
+        ])
 
     # Row 3: Recommendations
     keyboard.append([
