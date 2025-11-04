@@ -419,8 +419,9 @@ def get_trending(media_type: str = 'movie', time_window: str = 'week') -> List[D
 
 def discover_movies(
         genre_ids: Optional[List[int]] = None,
-        year: Optional[int] = None,
         min_rating: float = 0.0,
+        year_from: Optional[int] = None,
+        year_to: Optional[int] = None,
         sort_by: str = 'popularity.desc',
         page: int = 1
 ) -> List[Dict[str, Any]]:
@@ -428,43 +429,46 @@ def discover_movies(
     Discover movies with filters
 
     Args:
-        genre_ids: List of genre IDs to filter by
-        year: Release year
+        genre_ids: List of genre IDs
         min_rating: Minimum vote average
-        sort_by: Sort order (popularity.desc, vote_average.desc, etc.)
+        year_from: Start year
+        year_to: End year
+        sort_by: Sort method
         page: Page number
 
     Returns:
-        List of movies matching filters
+        List of movies
     """
     try:
-        logger.info(f"Discovering movies: genres={genre_ids}, year={year}, rating>={min_rating}")
+        logger.info(f"Discovering movies: genres={genre_ids}, rating={min_rating}, years={year_from}-{year_to}")
 
         # Build discover parameters
-        params = {
-            'page': page,
-            'sort_by': sort_by
+        discover_params = {
+            'sort_by': sort_by,
+            'page': page
         }
 
         if genre_ids:
-            params['with_genres'] = ','.join(map(str, genre_ids))
-
-        if year:
-            params['primary_release_year'] = year
+            discover_params['with_genres'] = ','.join(map(str, genre_ids))
 
         if min_rating > 0:
-            params['vote_average.gte'] = min_rating
+            discover_params['vote_average.gte'] = min_rating
+            discover_params['vote_count.gte'] = 100  # Ensure enough votes
 
-        results = discover_api.discover_movies(params)
+        if year_from:
+            discover_params['primary_release_date.gte'] = f"{year_from}-01-01"
 
-        # Convert to list first
+        if year_to:
+            discover_params['primary_release_date.lte'] = f"{year_to}-12-31"
+
+        # Make API call
+        results = discover_api.discover_movies(discover_params)
+
         movies = []
-        for m in results:
-            formatted = format_movie_data(m, 'movie')
+        for movie in results[:20]:
+            formatted = format_movie_data(movie, 'movie')
             if formatted:
                 movies.append(formatted)
-            if len(movies) >= 10:
-                break
 
         logger.info(f"✅ Discovered {len(movies)} movies")
         return movies

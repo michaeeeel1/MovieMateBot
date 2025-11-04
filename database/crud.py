@@ -345,5 +345,67 @@ def get_user_watch_history(session: Session, user_id: int, limit: int = 50) -> L
         logger.error(f"Error getting watch history: {e}")
         return []
 
+# USER PREFERENCES OPERATIONS
+
+def get_user_preferences(session: Session, user_id: int) -> Optional[UserPreferences]:
+    """Get user preferences"""
+    try:
+        return session.query(UserPreferences).filter(
+            UserPreferences.user_id == user_id
+        ).first()
+    except Exception as e:
+        logger.error(f"Error getting preferences: {e}")
+        return None
+
+
+def create_default_preferences(session: Session, user_id: int) -> Optional[UserPreferences]:
+    """Create default preferences for user"""
+    try:
+        prefs = UserPreferences(
+            user_id=user_id,
+            favorite_genres=[],
+            min_rating=6.0,
+            notifications_enabled=True
+        )
+        session.add(prefs)
+        session.commit()
+        session.refresh(prefs)
+        logger.info(f"✅ Created default preferences for user {user_id}")
+        return prefs
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating preferences: {e}")
+        return None
+
+
+def update_user_preferences(
+        session: Session,
+        user_id: int,
+        **kwargs
+) -> bool:
+    """Update user preferences"""
+    try:
+        prefs = session.query(UserPreferences).filter(
+            UserPreferences.user_id == user_id
+        ).first()
+
+        if not prefs:
+            return False
+
+        # Update fields
+        for key, value in kwargs.items():
+            if hasattr(prefs, key):
+                setattr(prefs, key, value)
+
+        session.commit()
+        logger.info(f"✅ Updated preferences for user {user_id}")
+        return True
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error updating preferences: {e}")
+        return False
+
+
 
 

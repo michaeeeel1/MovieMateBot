@@ -19,7 +19,8 @@ from database.connection import get_session
 from config import settings
 from database import crud
 from bot.handlers import (start, search, popular,
-                        trending, favorites, recommendations
+                        trending, favorites, recommendations,
+                        settings as settings_handler, advanced_search
                           )
 
 logger = logging.getLogger(__name__)
@@ -169,6 +170,68 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='Markdown'
             )
 
+    elif callback_data == "settings_toggle_notif":
+        await settings_handler.toggle_notifications(update, context)
+
+    elif callback_data == "settings_min_rating":
+        await settings_handler.show_min_rating_options(update, context)
+
+    elif callback_data.startswith("set_rating_"):
+        rating = float(callback_data.replace("set_rating_", ""))
+        await settings_handler.set_min_rating(update, context, rating)
+
+    elif callback_data == "back_to_settings":
+        query = update.callback_query
+        user = query.from_user
+
+        with get_session() as session:
+            db_user = crud.get_user_by_telegram_id(session, user.id)
+            if db_user:
+                await settings_handler.refresh_settings_message(query, db_user.id, session)
+
+    # Advanced Search callbacks
+    elif callback_data == "adv_search_genre":
+        await advanced_search.show_genre_selection(update, context)
+
+    elif callback_data == "adv_search_year":
+        await advanced_search.show_year_selection(update, context)
+
+    elif callback_data == "adv_search_rating":
+        await advanced_search.show_rating_selection(update, context)
+
+    elif callback_data == "adv_search_execute":
+        await advanced_search.execute_search(update, context)
+
+    elif callback_data == "adv_search_reset":
+        await advanced_search.reset_filters(update, context)
+
+    elif callback_data.startswith("toggle_genre_"):
+        genre_name = callback_data.replace("toggle_genre_", "")
+        await advanced_search.toggle_genre(update, context, genre_name)
+
+    elif callback_data == "genre_done":
+        await advanced_search.show_filter_menu(update, context, edit=True)
+
+    elif callback_data == "genre_clear":
+        context.user_data['search_filters']['genres'] = []
+        await advanced_search.show_genre_selection(update, context)
+
+    elif callback_data.startswith("year_range_"):
+        parts = callback_data.replace("year_range_", "").split("_")
+        year_from = int(parts[0])
+        year_to = int(parts[1])
+        await advanced_search.set_year_range(update, context, year_from, year_to)
+
+    elif callback_data == "year_done":
+        await advanced_search.show_filter_menu(update, context, edit=True)
+
+    elif callback_data.startswith("adv_rating_"):
+        rating = float(callback_data.replace("adv_rating_", ""))
+        await advanced_search.set_rating(update, context, rating)
+
+    elif callback_data == "rating_done":
+        await advanced_search.show_filter_menu(update, context, edit=True)
+
     # Unknown callback
     else:
         logger.warning(f"Unknown callback: {callback_data}")
@@ -184,6 +247,9 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if text == "🔍 Search Movies":
         await search.start_search(update, context)
+
+    elif text == "🔍 Advanced Search":  # ← НОВАЯ КНОПКА
+        await advanced_search.start_advanced_search(update, context)
 
     elif text == "🔥 Trending":
         await trending.show_trending_options(update, context)
@@ -219,13 +285,9 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode='Markdown'
                 )
 
+
     elif text == "⚙️ Settings":
-        await update.message.reply_text(
-            "⚙️ **Settings**\n\n"
-            "Settings are coming soon! 🚧\n\n"
-            "You'll be able to customize your preferences.\n"
-            "Stay tuned! 🎬"
-        )
+        await settings_handler.show_settings(update, context)
 
     elif text == "❓ Help":
         await start.help_command(update, context)

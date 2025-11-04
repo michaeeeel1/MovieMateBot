@@ -12,18 +12,21 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [
             KeyboardButton("🔍 Search Movies"),
-            KeyboardButton("🔥 Trending")
+            KeyboardButton("🔍 Advanced Search")  # ← ДОБАВИЛИ
         ],
         [
-            KeyboardButton("⭐ Popular"),
-            KeyboardButton("🎯 Recommendations")
+            KeyboardButton("🔥 Trending"),
+            KeyboardButton("⭐ Popular")
         ],
         [
-            KeyboardButton("❤️ My Favorites"),
-            KeyboardButton("📊 My Stats")
+            KeyboardButton("🎯 Recommendations"),
+            KeyboardButton("❤️ My Favorites")
         ],
         [
-            KeyboardButton("⚙️ Settings"),
+            KeyboardButton("📊 My Stats"),
+            KeyboardButton("⚙️ Settings")
+        ],
+        [
             KeyboardButton("❓ Help")
         ]
     ]
