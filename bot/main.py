@@ -11,11 +11,14 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     filters,
-    ContextTypes
+    ContextTypes,
+    ConversationHandler,
 )
 
+from database.connection import get_session
 from config import settings
-from bot.handlers import start
+from database import crud
+from bot.handlers import start, search
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,50 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             parse_mode='Markdown'
         )
 
+    elif callback_data.startswith("movie_"):
+        # Show movie details
+        tmdb_id = int(callback_data.replace("movie_", ""))
+        await search.show_movie_details(update, context, tmdb_id)
+
+    elif callback_data.startswith("fav_"):
+        # Add to favorites
+        tmdb_id = int(callback_data.replace("fav_", ""))
+        await handle_add_favorite(update, context, tmdb_id)
+
+    elif callback_data.startswith("unfav_"):
+        # Remove from favorites
+        tmdb_id = int(callback_data.replace("unfav_", ""))
+        await handle_remove_favorite(update, context, tmdb_id)
+
+    elif callback_data == "main_menu":
+        await query.edit_message_text(
+            "🏠 **Main Menu**\n\n"
+            "Use the buttons below to navigate! 👇"
+        )
+
+    elif callback_data == "back_search":
+        # Show last search results
+        if 'last_search_results' in context.user_data:
+            from bot.utils.formatters import format_search_results_header
+            from bot.keyboards.movie_keyboards import get_search_results_keyboard
+
+            results = context.user_data['last_search_results']
+            query_text = context.user_data.get('last_search_query', 'your search')
+
+            header = format_search_results_header(query_text, len(results))
+            keyboard = get_search_results_keyboard(results)
+
+            await query.edit_message_text(
+                header,
+                parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+        else:
+            await query.edit_message_text(
+                "🔍 No recent search.\n\n"
+                "Use 🔍 Search Movies to find movies!"
+            )
+
 # MESSAGE HANDLER
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -78,12 +125,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.info(f"Message: '{text}' from user {update.effective_user.id}")
 
     if text == "🔍 Search Movies":
-        await update.message.reply_text(
-            "🔍 **Search Movies**\n\n"
-            "This feature is coming soon! 🚧\n\n"
-            "You'll be able to search for any movie by title.\n"
-            "Stay tuned! 🎬"
-        )
+        await search.start_search(update, context)
 
     elif text == "🔥 Trending":
         await update.message.reply_text(
@@ -156,6 +198,83 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Please use the menu buttons below! 👇"
         )
 
+# FAVORITES HANDLERS
+
+async def handle_add_favorite(update: Update, context: ContextTypes.DEFAULT_TYPE, tmdb_id: int) -> None:
+    """Add movie to favorites"""
+    query = update.callback_query
+    await query.answer("❤️ Adding to favorites...")
+
+    user = update.effective_user
+
+    # Get movie details
+    from bot.utils.tmdb_api import get_movie_details
+    movie = get_movie_details(tmdb_id)
+
+    if not movie:
+        await query.answer("❌ Error loading movie", show_alert=True)
+        return
+
+    # Add to database
+    with get_session() as session:
+        db_user = crud.get_user_by_telegram_id(session, user.id)
+        if db_user:
+            result = crud.add_to_favorites(
+                session=session,
+                user_id=db_user.id,
+                tmdb_id=tmdb_id,
+                media_type='movie',
+                title=movie['title'],
+                poster_path=movie.get('poster_path'),
+                backdrop_path=movie.get('backdrop_path'),
+                overview=movie.get('overview'),
+                release_date=movie.get('release_date'),
+                vote_average=movie.get('vote_average'),
+                genres=movie.get('genres', [])
+            )
+
+            if result:
+                await query.answer("❤️ Added to favorites!", show_alert=True)
+
+                # Update keyboard
+                from bot.keyboards.movie_keyboards import get_movie_details_keyboard
+                keyboard = get_movie_details_keyboard(tmdb_id, is_favorite=True)
+
+                try:
+                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                except:
+                    pass
+            else:
+                await query.answer("⚠️ Already in favorites!", show_alert=True)
+
+
+async def handle_remove_favorite(update: Update, context: ContextTypes.DEFAULT_TYPE, tmdb_id: int) -> None:
+    """Remove movie from favorites"""
+    query = update.callback_query
+    await query.answer("💔 Removing from favorites...")
+
+    user = update.effective_user
+
+    # Remove from database
+    with get_session() as session:
+        db_user = crud.get_user_by_telegram_id(session, user.id)
+        if db_user:
+            result = crud.remove_from_favorites(session, db_user.id, tmdb_id)
+
+            if result:
+                await query.answer("💔 Removed from favorites", show_alert=True)
+
+                # Update keyboard
+                from bot.keyboards.movie_keyboards import get_movie_details_keyboard
+                keyboard = get_movie_details_keyboard(tmdb_id, is_favorite=False)
+
+                try:
+                    await query.edit_message_reply_markup(reply_markup=keyboard)
+                except:
+                    pass
+            else:
+                await query.answer("❌ Error removing", show_alert=True)
+
 # APPLICATION SETUP
 
 def setup_handlers(application: Application) -> None:
@@ -165,6 +284,29 @@ def setup_handlers(application: Application) -> None:
     # Command handlers
     application.add_handler(CommandHandler("start", start.start_command))
     application.add_handler(CommandHandler("help", start.help_command))
+
+    # Search conversation handler
+    search_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex("^🔍 Search Movies$"),
+                search.start_search
+            )
+        ],
+        states={
+            search.WAITING_FOR_SEARCH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    search.handle_search_query
+                )
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", search.cancel_search)
+        ]
+    )
+
+    application.add_handler(search_conv_handler)
 
     # Callback query handler
     application.add_handler(CallbackQueryHandler(handle_callback_query))
