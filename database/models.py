@@ -48,7 +48,7 @@ class User(Base):
     )
     username = Column(String(255), nullable=False)
     first_name = Column(String(255), nullable=False)
-    last_name = Column(String(255), nullable=False)
+    last_name = Column(String(255), nullable=True)
 
     # Settings
     language = Column(String(255), default='en', comment='Interface language')
@@ -59,7 +59,13 @@ class User(Base):
     last_active_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
     # Relationships
-    preferences = relationship('UserPreferences', backref='user', uselist=False, cascade='all, delete-orphan')
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy='joined'  # Eager load preferences with user
+    )
     favorites = relationship('Favorite', back_populates='user', cascade='all, delete-orphan')
     watch_history = relationship("WatchHistory", back_populates='user', cascade='all, delete-orphan')
     search_history = relationship("SearchHistory", back_populates='user', cascade='all, delete-orphan')

@@ -40,6 +40,13 @@ def create_user(
 ) -> Optional[User]:
     """Create new user"""
     try:
+        # Check if user already exists first
+        existing = get_user_by_telegram_id(session, telegram_id)
+        if existing:
+            logger.info(f"User {telegram_id} already exists, returning existing")
+            return existing
+
+        # Create new user
         user = User(
             telegram_id=telegram_id,
             username=username,
@@ -50,8 +57,7 @@ def create_user(
         )
 
         session.add(user)
-        session.commit()
-        session.refresh(user)
+        session.flush()  # Get user.id without committing yet
 
         # Create default preferences
         prefs = UserPreferences(
@@ -60,15 +66,13 @@ def create_user(
             min_rating=6.0
         )
         session.add(prefs)
+
+        # Commit everything together
         session.commit()
+        session.refresh(user)
 
-        logger.info(f"✅ Created user: {telegram_id} ({username})")
+        logger.info(f"✅ Created new user: {telegram_id} ({username})")
         return user
-
-    except IntegrityError:
-        session.rollback()
-        logger.warning(f"User {telegram_id} already exists")
-        return get_user_by_telegram_id(session, telegram_id)
 
     except Exception as e:
         session.rollback()
