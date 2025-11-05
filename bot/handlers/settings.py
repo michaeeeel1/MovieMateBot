@@ -26,7 +26,11 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     logger.info(f"User {user.id} opened settings")
 
-    # Get current preferences
+    # Get current preferences - EXTRACT DATA INSIDE SESSION
+    notifications = True
+    min_rating = 6.0
+    favorite_genres_count = 0
+
     with get_session() as session:
         db_user = crud.get_user_by_telegram_id(session, user.id)
 
@@ -42,18 +46,21 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             # Create default preferences
             prefs = crud.create_default_preferences(session, db_user.id)
 
-    # Extract preferences
-    notifications = prefs.notifications_enabled if prefs else True
-    min_rating = prefs.min_rating if prefs else 6.0
-    favorite_genres = prefs.favorite_genres if prefs else []
+        # Extract data INSIDE session
+        if prefs:
+            notifications = prefs.notifications_enabled if prefs.notifications_enabled is not None else True
+            min_rating = prefs.min_rating if prefs.min_rating else 6.0
+            favorite_genres = prefs.favorite_genres if prefs.favorite_genres else []
+            favorite_genres_count = len(favorite_genres)
 
+    # Now we're outside session - use extracted data
     # Format settings text
     settings_text = (
         f"⚙️ **Settings**\n\n"
         f"**Current Settings:**\n"
         f"🔔 Notifications: {'✅ Enabled' if notifications else '❌ Disabled'}\n"
         f"⭐ Min Rating: {min_rating}/10\n"
-        f"🎭 Favorite Genres: {len(favorite_genres) if favorite_genres else 0} selected\n\n"
+        f"🎭 Favorite Genres: {favorite_genres_count} selected\n\n"
         f"Tap below to change settings:"
     )
 
@@ -177,21 +184,25 @@ async def set_min_rating(update: Update, context: ContextTypes.DEFAULT_TYPE, rat
 
 async def refresh_settings_message(query, user_id: int, session) -> None:
     """Refresh settings message with updated data"""
+
+    # Extract data INSIDE session
     prefs = crud.get_user_preferences(session, user_id)
 
     if not prefs:
         return
 
-    notifications = prefs.notifications_enabled
-    min_rating = prefs.min_rating
-    favorite_genres = prefs.favorite_genres or []
+    notifications = prefs.notifications_enabled if prefs.notifications_enabled is not None else True
+    min_rating = prefs.min_rating if prefs.min_rating else 6.0
+    favorite_genres = prefs.favorite_genres if prefs.favorite_genres else []
+    favorite_genres_count = len(favorite_genres)
 
+    # Now format message with extracted data
     settings_text = (
         f"⚙️ **Settings**\n\n"
         f"**Current Settings:**\n"
         f"🔔 Notifications: {'✅ Enabled' if notifications else '❌ Disabled'}\n"
         f"⭐ Min Rating: {min_rating}/10\n"
-        f"🎭 Favorite Genres: {len(favorite_genres)} selected\n\n"
+        f"🎭 Favorite Genres: {favorite_genres_count} selected\n\n"
         f"Tap below to change settings:"
     )
 
@@ -224,4 +235,3 @@ async def refresh_settings_message(query, user_id: int, session) -> None:
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-

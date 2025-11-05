@@ -110,11 +110,14 @@ class UserPreferences(Base):
 
     # Language preferences
     preferred_languages = Column(JSON, default=list, comment="List of language codes")
+    notifications_enabled = Column(Boolean, default=True)
 
     # Content preferences
     include_adult = Column(Boolean, default=False)
 
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 
     # Relationship
     user = relationship("User", back_populates="preferences")
