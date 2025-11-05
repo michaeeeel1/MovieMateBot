@@ -176,6 +176,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif callback_data == "settings_min_rating":
         await settings_handler.show_min_rating_options(update, context)
 
+    elif callback_data == "settings_genres":  # ← ДОБАВЛЯЕМ!
+        await query.answer("🎭 Genre selection coming soon!", show_alert=True)
+
     elif callback_data.startswith("set_rating_"):
         rating = float(callback_data.replace("set_rating_", ""))
         await settings_handler.set_min_rating(update, context, rating)

@@ -130,19 +130,20 @@ async def show_genre_selection(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ Could not load genres", show_alert=True)
         return
 
-    # Get currently selected genres
-    selected = context.user_data.get('search_filters', {}).get('genres', [])
+    # Get currently selected genre NAMES (not IDs!)
+    selected_names = context.user_data.get('search_filters', {}).get('genres', [])
 
     # Create keyboard with checkboxes
     keyboard = []
 
     for genre_name, genre_id in sorted(genres.items()):
         emoji = GENRE_EMOJI.get(genre_name, '🎬')
-        checkbox = '✅' if genre_name in selected else '☐'
+        # Check if THIS genre name is in selected list
+        checkbox = '✅' if genre_name in selected_names else '☐'
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{checkbox} {emoji} {genre_name}",
+                f"{checkbox} {emoji} {genre_name}",  # ← ПОКАЗЫВАЕМ НАЗВАНИЕ!
                 callback_data=f"toggle_genre_{genre_name}"
             )
         ])
@@ -154,7 +155,7 @@ async def show_genre_selection(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await query.edit_message_text(
         f"🎭 **Select Genres**\n\n"
-        f"Selected: {len(selected)}\n"
+        f"Selected: {len(selected_names)}\n"
         f"Tap to toggle:",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -374,8 +375,19 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def reset_filters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reset all filters to default"""
     query = update.callback_query
-    await query.answer()
 
+    # Check if already default
+    current_filters = context.user_data.get('search_filters', {})
+
+    if (not current_filters.get('genres') and
+            not current_filters.get('year_from') and
+            not current_filters.get('year_to') and
+            current_filters.get('min_rating', 6.0) == 6.0):
+        # Already at default
+        await query.answer("🔄 Filters already at default!", show_alert=True)
+        return
+
+    # Reset
     context.user_data['search_filters'] = {
         'genres': [],
         'year_from': None,

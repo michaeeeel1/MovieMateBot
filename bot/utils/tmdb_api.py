@@ -442,18 +442,19 @@ def discover_movies(
     try:
         logger.info(f"Discovering movies: genres={genre_ids}, rating={min_rating}, years={year_from}-{year_to}")
 
-        # Build discover parameters
-        discover_params = {
-            'sort_by': sort_by,
-            'page': page
-        }
+        # Use Discover API correctly
+        from tmdbv3api import Discover
+        discover_api = Discover()
+
+        # Build discover parameters as dict
+        discover_params = {}
 
         if genre_ids:
-            discover_params['with_genres'] = ','.join(map(str, genre_ids))
+            discover_params['with_genres'] = '|'.join(map(str, genre_ids))  # OR operation
 
         if min_rating > 0:
             discover_params['vote_average.gte'] = min_rating
-            discover_params['vote_count.gte'] = 100  # Ensure enough votes
+            discover_params['vote_count.gte'] = 100
 
         if year_from:
             discover_params['primary_release_date.gte'] = f"{year_from}-01-01"
@@ -461,20 +462,31 @@ def discover_movies(
         if year_to:
             discover_params['primary_release_date.lte'] = f"{year_to}-12-31"
 
-        # Make API call
+        discover_params['sort_by'] = sort_by
+
+        # Make API call - discover_movies() returns list directly
         results = discover_api.discover_movies(discover_params)
 
+        if not results:
+            logger.warning("No results from discover")
+            return []
+
         movies = []
-        for movie in results[:20]:
+        for movie in results:
             formatted = format_movie_data(movie, 'movie')
-            if formatted:
+            if formatted and formatted.get('tmdb_id'):
                 movies.append(formatted)
+
+            if len(movies) >= 20:
+                break
 
         logger.info(f"✅ Discovered {len(movies)} movies")
         return movies
 
     except Exception as e:
         logger.error(f"Error discovering movies: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return []
 
 # RECOMMENDATIONS
