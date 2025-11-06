@@ -615,3 +615,325 @@ if test_api_connection():
 else:
     logger.warning("⚠️  TMDb API connection issues detected")
 
+
+# ============================================
+# TV SHOWS API
+# ============================================
+
+def search_tv_shows(query: str, page: int = 1) -> List[Dict[str, Any]]:
+    """
+    Search for TV shows
+
+    Args:
+        query: Search query
+        page: Page number
+
+    Returns:
+        List of TV shows
+    """
+    try:
+        logger.info(f"Searching TV shows: '{query}'")
+
+        from tmdbv3api import TV
+        tv_api = TV()
+
+        results = tv_api.search(query)
+
+        if not results:
+            logger.warning(f"No TV shows found for: {query}")
+            return []
+
+        shows = []
+        for show in results[:20]:
+            formatted = format_movie_data(show, 'tv')
+            if formatted and formatted.get('tmdb_id'):
+                shows.append(formatted)
+
+        logger.info(f"✅ Found {len(shows)} TV shows")
+        return shows
+
+    except Exception as e:
+        logger.error(f"Error searching TV shows: {e}")
+        return []
+
+
+def get_tv_show_details(tv_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Get detailed TV show information
+
+    Args:
+        tv_id: TMDb TV show ID
+
+    Returns:
+        TV show details dictionary
+    """
+    try:
+        logger.info(f"Getting TV show details for ID: {tv_id}")
+
+        from tmdbv3api import TV
+        tv_api = TV()
+
+        show = tv_api.details(tv_id)
+
+        if not show:
+            logger.warning(f"TV show not found: {tv_id}")
+            return None
+
+        # Format basic data
+        formatted = format_movie_data(show, 'tv')
+
+        if not formatted:
+            return None
+
+        # Add TV-specific details
+        formatted['number_of_seasons'] = safe_get(show, 'number_of_seasons', 0)
+        formatted['number_of_episodes'] = safe_get(show, 'number_of_episodes', 0)
+        formatted['status'] = safe_get(show, 'status', 'Unknown')
+        formatted['type'] = safe_get(show, 'type', 'Scripted')
+        formatted['first_air_date'] = safe_get(show, 'first_air_date', '')
+        formatted['last_air_date'] = safe_get(show, 'last_air_date', '')
+        formatted['in_production'] = safe_get(show, 'in_production', False)
+
+        # Get networks
+        networks = safe_get(show, 'networks', [])
+        formatted['networks'] = [safe_get(n, 'name', '') for n in networks] if networks else []
+
+        # Get seasons info
+        seasons = safe_get(show, 'seasons', [])
+        formatted['seasons'] = []
+        if seasons:
+            for season in seasons:
+                formatted['seasons'].append({
+                    'season_number': safe_get(season, 'season_number', 0),
+                    'name': safe_get(season, 'name', ''),
+                    'episode_count': safe_get(season, 'episode_count', 0),
+                    'air_date': safe_get(season, 'air_date', '')
+                })
+
+        logger.info(f"✅ Got TV show details: {formatted['title']}")
+        return formatted
+
+    except Exception as e:
+        logger.error(f"Error getting TV show details: {e}")
+        return None
+
+
+def get_trending_tv(time_window: str = 'week') -> List[Dict[str, Any]]:
+    """
+    Get trending TV shows
+
+    Args:
+        time_window: 'day' or 'week'
+
+    Returns:
+        List of trending TV shows
+    """
+    try:
+        logger.info(f"Getting trending TV shows ({time_window})")
+
+        results = trending_api.tv_week() if time_window == 'week' else trending_api.tv_day()
+
+        if not results:
+            logger.warning("No trending TV shows found")
+            return []
+
+        shows = []
+        for show in results[:20]:
+            formatted = format_movie_data(show, 'tv')
+            if formatted and formatted.get('tmdb_id'):
+                shows.append(formatted)
+
+        logger.info(f"✅ Found {len(shows)} trending TV shows")
+        return shows
+
+    except Exception as e:
+        logger.error(f"Error getting trending TV: {e}")
+        return []
+
+
+def get_popular_tv_shows(page: int = 1) -> List[Dict[str, Any]]:
+    """
+    Get popular TV shows
+
+    Args:
+        page: Page number
+
+    Returns:
+        List of popular TV shows
+    """
+    try:
+        logger.info("Getting popular TV shows")
+
+        from tmdbv3api import TV
+        tv_api = TV()
+
+        results = tv_api.popular()
+
+        if not results:
+            logger.warning("No popular TV shows found")
+            return []
+
+        shows = []
+        for show in results[:20]:
+            formatted = format_movie_data(show, 'tv')
+            if formatted and formatted.get('tmdb_id'):
+                shows.append(formatted)
+
+        logger.info(f"✅ Found {len(shows)} popular TV shows")
+        return shows
+
+    except Exception as e:
+        logger.error(f"Error getting popular TV: {e}")
+        return []
+
+
+def get_tv_recommendations(tv_id: int, page: int = 1) -> List[Dict[str, Any]]:
+    """
+    Get TV show recommendations
+
+    Args:
+        tv_id: TMDb TV show ID
+        page: Page number
+
+    Returns:
+        List of similar TV shows
+    """
+    try:
+        logger.info(f"Getting recommendations for TV show {tv_id}")
+
+        from tmdbv3api import TV
+        tv_api = TV()
+
+        results = tv_api.recommendations(tv_id)
+
+        if not results:
+            # Fallback to similar
+            results = tv_api.similar(tv_id)
+
+        if not results:
+            logger.warning(f"No recommendations for TV show {tv_id}")
+            return []
+
+        shows = []
+        for show in results[:20]:
+            formatted = format_movie_data(show, 'tv')
+            if formatted and formatted.get('tmdb_id'):
+                shows.append(formatted)
+
+        logger.info(f"✅ Found {len(shows)} TV recommendations")
+        return shows
+
+    except Exception as e:
+        logger.error(f"Error getting TV recommendations: {e}")
+        return []
+
+
+def discover_tv_shows(
+        genre_ids: Optional[List[int]] = None,
+        min_rating: float = 0.0,
+        year_from: Optional[int] = None,
+        year_to: Optional[int] = None,
+        sort_by: str = 'popularity.desc',
+        page: int = 1
+) -> List[Dict[str, Any]]:
+    """
+    Discover TV shows with filters
+
+    Args:
+        genre_ids: List of genre IDs
+        min_rating: Minimum vote average
+        year_from: Start year
+        year_to: End year
+        sort_by: Sort method
+        page: Page number
+
+    Returns:
+        List of TV shows
+    """
+    try:
+        logger.info(f"Discovering TV shows: genres={genre_ids}, rating={min_rating}, years={year_from}-{year_to}")
+
+        from tmdbv3api import Discover
+        discover_api = Discover()
+
+        discover_params = {}
+
+        if genre_ids:
+            discover_params['with_genres'] = '|'.join(map(str, genre_ids))
+
+        if min_rating > 0:
+            discover_params['vote_average.gte'] = min_rating
+            discover_params['vote_count.gte'] = 50  # Lower threshold for TV
+
+        if year_from:
+            discover_params['first_air_date.gte'] = f"{year_from}-01-01"
+
+        if year_to:
+            discover_params['first_air_date.lte'] = f"{year_to}-12-31"
+
+        discover_params['sort_by'] = sort_by
+
+        results = discover_api.discover_tv_shows(discover_params)
+
+        if not results:
+            logger.warning("No TV shows from discover")
+            return []
+
+        shows = []
+        for show in results:
+            formatted = format_movie_data(show, 'tv')
+            if formatted and formatted.get('tmdb_id'):
+                shows.append(formatted)
+
+            if len(shows) >= 20:
+                break
+
+        logger.info(f"✅ Discovered {len(shows)} TV shows")
+        return shows
+
+    except Exception as e:
+        logger.error(f"Error discovering TV shows: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return []
+
+
+def get_tv_trailer_url(tv_id: int) -> Optional[str]:
+    """
+    Get TV show trailer URL from YouTube
+
+    Args:
+        tv_id: TMDb TV show ID
+
+    Returns:
+        YouTube URL or None
+    """
+    try:
+        from tmdbv3api import TV
+        tv_api = TV()
+
+        videos = tv_api.videos(tv_id)
+
+        if not videos:
+            return None
+
+        # Find trailer
+        for video in videos:
+            if video.get('type') == 'Trailer' and video.get('site') == 'YouTube':
+                key = video.get('key')
+                if key:
+                    return f"https://www.youtube.com/watch?v={key}"
+
+        # Fallback to any YouTube video
+        for video in videos:
+            if video.get('site') == 'YouTube':
+                key = video.get('key')
+                if key:
+                    return f"https://www.youtube.com/watch?v={key}"
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error getting TV trailer: {e}")
+        return None
+

@@ -4,7 +4,7 @@ Telegram Bot Initialization
 """
 
 import logging
-from telegram import Update
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -20,7 +20,8 @@ from config import settings
 from database import crud
 from bot.handlers import (start, search, popular,
                         trending, favorites, recommendations,
-                        settings as settings_handler, advanced_search
+                        settings as settings_handler, advanced_search,
+                        tv_shows
                           )
 
 logger = logging.getLogger(__name__)
@@ -112,12 +113,19 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         tmdb_id = int(callback_data.replace("trailer_", ""))
         await handle_trailer(update, context, tmdb_id)
 
-    # Trending Options
+        # Trending callbacks
     elif callback_data == "trending_day":
         await trending.show_trending(update, context, 'day')
 
     elif callback_data == "trending_week":
         await trending.show_trending(update, context, 'week')
+
+    # TV Trending callbacks
+    elif callback_data == "trending_tv_day":
+        await show_trending_tv(update, context, 'day')
+
+    elif callback_data == "trending_tv_week":
+        await show_trending_tv(update, context, 'week')
 
     # Main Menu
     elif callback_data == "main_menu":
@@ -254,11 +262,114 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif text == "🔍 Advanced Search":  # ← НОВАЯ КНОПКА
         await advanced_search.start_advanced_search(update, context)
 
+        # Movies vs TV Shows
+    elif text == "🎬 Movies":
+        # Store preference
+        context.user_data['media_mode'] = 'movie'
+
+        keyboard = [
+            [
+                KeyboardButton("🔍 Search Movies"),
+                KeyboardButton("🔍 Advanced Search")
+            ],
+            [
+                KeyboardButton("🔥 Trending"),
+                KeyboardButton("⭐ Popular")
+            ],
+            [
+                KeyboardButton("🎯 Recommendations"),
+                KeyboardButton("❤️ My Favorites")
+            ],
+            [
+                KeyboardButton("📊 My Stats"),
+                KeyboardButton("⚙️ Settings")
+            ],
+            [
+                KeyboardButton("🔙 Back to Menu"),
+                KeyboardButton("❓ Help")
+            ]
+        ]
+
+        await update.message.reply_text(
+            "🎬 **Movies Mode**\n\n"
+            "You're now browsing movies!\n"
+            "Use the buttons below:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+
+    elif text == "📺 TV Shows":
+        # Store preference
+        context.user_data['media_mode'] = 'tv'
+
+        keyboard = [
+            [
+                KeyboardButton("🔍 Search TV Shows"),
+                KeyboardButton("🔍 Advanced TV Search")
+            ],
+            [
+                KeyboardButton("🔥 Trending TV"),
+                KeyboardButton("⭐ Popular TV")
+            ],
+            [
+                KeyboardButton("🎯 TV Recommendations"),
+                KeyboardButton("❤️ My Favorite TV")
+            ],
+            [
+                KeyboardButton("📊 My Stats"),
+                KeyboardButton("⚙️ Settings")
+            ],
+            [
+                KeyboardButton("🔙 Back to Menu"),
+                KeyboardButton("❓ Help")
+            ]
+        ]
+
+        await update.message.reply_text(
+            "📺 **TV Shows Mode**\n\n"
+            "You're now browsing TV shows!\n"
+            "Use the buttons below:",
+            parse_mode='Markdown',
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+
+    elif text == "🔙 Back to Menu":
+        from bot.keyboards.main_menu import get_main_menu_keyboard
+        await update.message.reply_text(
+            "🏠 **Main Menu**\n\n"
+            "Choose what to explore:",
+            parse_mode='Markdown',
+            reply_markup=get_main_menu_keyboard()
+        )
+
+    # TV Show search
+    elif text == "🔍 Search TV Shows":
+        await tv_shows.start_tv_search(update, context)
+
+    elif text == "🔍 Advanced TV Search":
+        context.user_data['search_media_type'] = 'tv'
+        await advanced_search.start_advanced_search(update, context)
+
+
     elif text == "🔥 Trending":
-        await trending.show_trending_options(update, context)
+        media_mode = context.user_data.get('media_mode', 'movie')
+        if media_mode == 'tv':
+            await tv_shows.show_trending_tv_options(update, context)
+        else:
+            await trending.show_trending_options(update, context)
+
+    elif text == "🔥 Trending TV":
+        await tv_shows.show_trending_tv_options(update, context)
 
     elif text == "⭐ Popular":
-        await popular.show_popular(update, context)
+        media_mode = context.user_data.get('media_mode', 'movie')
+        if media_mode == 'tv':
+            await tv_shows.show_popular_tv(update, context)
+        else:
+            await popular.show_popular(update, context)
+
+    elif text == "⭐ Popular TV":
+        await tv_shows.show_popular_tv(update, context)
 
     elif text == "🎯 Recommendations":
         await recommendations.show_recommendations(update, context)
@@ -493,6 +604,114 @@ async def handle_remove_favorite(update: Update, context: ContextTypes.DEFAULT_T
             else:
                 await query.answer("❌ Error removing", show_alert=True)
 
+
+# ============================================
+# TV SHOWS HANDLERS
+# ============================================
+
+async def show_trending_tv_options(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show trending TV options"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔥 Today", callback_data="trending_tv_day"),
+            InlineKeyboardButton("📅 This Week", callback_data="trending_tv_week")
+        ],
+        [
+            InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")
+        ]
+    ]
+
+    await update.message.reply_text(
+        "🔥 **Trending TV Shows**\n\n"
+        "What's trending do you want to see?",
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def show_trending_tv(update: Update, context: ContextTypes.DEFAULT_TYPE, time_window: str) -> None:
+    """Show trending TV shows"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    await query.edit_message_text(
+        f"🔥 Loading trending TV shows ({time_window})...",
+        parse_mode='Markdown'
+    )
+
+    from bot.utils.tmdb_api import get_trending_tv
+    shows = get_trending_tv(time_window)
+
+    if not shows:
+        await query.edit_message_text(
+            "❌ Couldn't load trending TV shows.\n"
+            "Please try again later!",
+            parse_mode='Markdown'
+        )
+        return
+
+    time_label = "Today" if time_window == 'day' else "This Week"
+    header = (
+        f"🔥 **Trending TV Shows - {time_label}**\n\n"
+        f"Top {len(shows)} trending shows! 🚀\n"
+        f"Tap to see details 👇"
+    )
+
+    from bot.keyboards.movie_keyboards import get_search_results_keyboard
+    keyboard = get_search_results_keyboard(shows)
+
+    context.user_data['last_search_results'] = shows
+    context.user_data['last_search_query'] = f'trending TV {time_window}'
+
+    await query.edit_message_text(
+        header,
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
+
+
+async def show_popular_tv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show popular TV shows"""
+    user = update.effective_user
+
+    loading_msg = await update.message.reply_text(
+        "⭐ Loading popular TV shows...",
+        parse_mode='Markdown'
+    )
+
+    from bot.utils.tmdb_api import get_popular_tv_shows
+    shows = get_popular_tv_shows()
+
+    await loading_msg.delete()
+
+    if not shows:
+        await update.message.reply_text(
+            "❌ Couldn't load popular TV shows.\n"
+            "Please try again later!",
+            parse_mode='Markdown'
+        )
+        return
+
+    header = (
+        f"⭐ **Popular TV Shows Right Now**\n\n"
+        f"Top {len(shows)} most popular shows! 🔥\n"
+        f"Tap to see details 👇"
+    )
+
+    from bot.keyboards.movie_keyboards import get_search_results_keyboard
+    keyboard = get_search_results_keyboard(shows)
+
+    context.user_data['last_search_results'] = shows
+    context.user_data['last_search_query'] = 'popular TV shows'
+
+    await update.message.reply_text(
+        header,
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
+
 # APPLICATION SETUP
 
 def setup_handlers(application: Application) -> None:
@@ -503,7 +722,7 @@ def setup_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("start", start.start_command))
     application.add_handler(CommandHandler("help", start.help_command))
 
-    # Search conversation handler
+    # Movie search conversation handler
     search_conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(
@@ -524,7 +743,29 @@ def setup_handlers(application: Application) -> None:
         ]
     )
 
+    # TV search conversation handler
+    tv_search_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex("^🔍 Search TV Shows$"),
+                tv_shows.start_tv_search
+            )
+        ],
+        states={
+            tv_shows.WAITING_FOR_TV_SEARCH: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    tv_shows.handle_tv_search_query
+                )
+            ]
+        },
+        fallbacks=[
+            CommandHandler("cancel", tv_shows.cancel_tv_search)
+        ]
+    )
+
     application.add_handler(search_conv_handler)
+    application.add_handler(tv_search_conv_handler)
 
     # Callback query handler
     application.add_handler(CallbackQueryHandler(handle_callback_query))
